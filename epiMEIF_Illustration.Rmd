@@ -1,0 +1,632 @@
+---
+title: "Detecting high-order epistasis interactions using mixed effect conditional inference forest (epiMEIF)"
+author: "Saswati Saha"
+date: "05-09-2021"
+output:
+  rmdformats::readthedown:
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    
+    
+params: 
+  department: TAGC (Theories and approaches of genomic complexity)
+  endCode: FALSE
+  RmdLocation: ""
+---
+
+We have developed a novel approach of epistasis detection using mixed-effect conditional inference forest model. The primary goal of our approach is to identify the epistatic interactions networks of genetic variants associated with the phenotypic variation from GWAS population studies. A mixed effect conditional inference forest (MEIF) or conditional inference forest (cforest) is fitted on a group of potential causal SNPs set and the tree structure in the forest facilitates us to identify n-way SNP interactions between the explanatory SNPs that contribute to the phenotypic variability. Furthermore, we have developed statistical approaches using max-t test and anova test to methodologically validate the epistatic clusters from the epiMEIF and statistically test the enrichment of the clusters. Overall, the MEIF along with the additional testing strategies provides a generalized way to obtain genetic variants and their higher order interactions from any GWAS data.
+
+In this html report we illustrate how to run the cforest part of the epiMEIF R package and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network.
+
+```{r setOptions, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, error = FALSE, fig.pos = "!H")
+```
+
+
+[//]: # "Load the libraries"
+```{r loadLibraries, echo=FALSE, warning=FALSE, message=FALSE}
+options(java.parameters = "-Xmx8048m")
+library( kableExtra)
+library( rmarkdown)
+library( rmdformats)
+library( htmltools)
+library( RSQLite)
+library( knitr)
+library( dplyr)
+library( tinytex)
+library( purrr)
+library( ggplot2)
+library( lubridate)
+library( forcats)
+library( DT)
+library( RColorBrewer)
+library( corrplot)
+library( rmcorr)
+library( pheatmap)
+library( forcats)
+library( ggplot2)
+library( car) 
+library( visNetwork)
+library( igraph)
+library( varhandle)
+library( htmltools)
+library( htmlwidgets)
+library( partykit)
+library( viridis)
+library( gridExtra)
+library( grid)
+library( patchwork) # To display 2 charts together
+library( hrbrthemes)
+library( plyr)
+##Reading the source code 
+# A few constants
+WORKING_DIR <- "D:/Article/corrected_draft/Rcodes"
+DATA_DIR <- file.path( WORKING_DIR, "data")
+SCRIPT_DIR <- file.path( WORKING_DIR, "codes")
+data1 <- readRDS(file.path(DATA_DIR, "Age1_Dataset-3I.RDS"))
+data2 <- readRDS(file.path(DATA_DIR, "Ageing_Dataset.RDS"))
+source( file.path( SCRIPT_DIR, "Interactions_Score_Age1.R"))
+
+```
+
+
+# 1. Cross-sectional Dataset
+We have created a cross-sectional dataset using the DGRP dataset where there is one 3-way SNP interaction and 4 marginal effects. The data comprises 50 other SNPs that are not associated with the simulated phenotype. Showing snippets of the data. The following table shows summary of the dataset
+
+```{r data_summary, echo=TRUE, warning=FALSE, message=FALSE} 
+print(summary(data1[,1:5]))
+#0: minor allele,  2:major allele
+dim(data1)
+print(data1[1:10,1:9])
+plot(density(data1$PHENOTYPE))
+```
+
+##  Weighted cforest application
+As already mentioned in our article, we prefer to apply the weighted epiMEIF for the cross-sectional dataset instead of the epiMEIF approach so that the epistatic interactions are not biased towards markers with low pvalues or high marginal effect.We have shown the application of weighted cforest for the cross-sectional dataset in the following section.
+
+How to compute the weights?
+
+We compute the single GWAS pvalues of each marker based on a single locus association test(using LMM) and assign higher weights to markers with lower significance. We assign constant weight to all markers with significance above 10%. The following chunk shows a plot illustrating the relationship between the single GWAS p-values and the weights assigned to each markers.
+
+[//]: # "Loading the weights"
+```{r designing_weights, echo=TRUE, warning=FALSE, message=FALSE} 
+Single_Marker_Significance <- sapply( setdiff( colnames(data1), c("PHENOTYPE")), 
+                              function(snp){
+                              fit <- lm( as.formula( paste("PHENOTYPE~", snp, sep="")),data=data1);
+                              t <- anova( fit);                       
+                              return( t$`Pr(>F)`[1])})
+
+Single_Marker_Significance <- unlist( Single_Marker_Significance)
+##Setting up the parameters. We take 50 trees based on the size of our dataset. This will vary depending on the dataset. n denotes the total number of markers and q denote the number of variables sampled for creating each node in the random forest.
+ntree=50
+n=length(Single_Marker_Significance)
+q=round(ntree/3,0)
+
+Single_Marker_Significance <- data.frame( pvalue=Single_Marker_Significance,                                        Rank_Markers=rank(Single_Marker_Significance))
+
+Single_Marker_Significance <- Single_Marker_Significance[ order( Single_Marker_Significance$Rank_Markers),]
+max_ind <- which( Single_Marker_Significance$pvalue > 0.1)[1]
+Single_Marker_Significance$weights<- Single_Marker_Significance$weights1<-  rep(1, nrow(Single_Marker_Significance))  
+
+#Assigning ranks to the top n-q+1 markers. The intuition behind designing the following weight is explained in the article.
+Single_Marker_Significance$weights[1:(n-q+1)]<- sapply(1:(n-q+1),
+                                                function(i) as.numeric(comboCount(n-i, q-1)/comboCount(n,q)))
+
+#We assign same weight to all markers with pvalues>0.1.
+Single_Marker_Significance$weights[(max_ind+1):n]<- Single_Marker_Significance$weights[(max_ind)]
+Single_Marker_Significance$weights1[1:max_ind] <- (log(1/Single_Marker_Significance$weights[1:(max_ind)])/max(log(1/Single_Marker_Significance$weights[1:(max_ind)]))) 
+Single_Marker_Significance$weights1[(max_ind+1):n] <- Single_Marker_Significance$weights1[(max_ind+1)]
+    
+weight_variable <- Single_Marker_Significance$weights1
+Single_Marker_Significance$weights <- weight_variable
+
+#Plotting the weights and the p-values
+temperatureColor <- "#69b3a2"
+priceColor <- rgb(0.2, 0.6, 0.9, 1)
+
+ggplot(Single_Marker_Significance, aes(x=Rank_Markers)) +
+  geom_line( aes(y=-log10(pvalue)),size=2, color=temperatureColor) + 
+  geom_line( aes(y=weights1*6.57), size=2, color=priceColor) +
+  scale_y_continuous(
+    # Features of the first axis
+    name = "-log10(p-value)", limit=c(0,7),
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~.*(1/6.57), name="Weights")) + 
+  theme_ipsum() +
+  theme(
+    axis.title.y = element_text(color = temperatureColor, size=13),
+    axis.title.y.right = element_text(color = priceColor, size=13)) +
+  ggtitle("P-values down, weight of sampling up")
+
+names(weight_variable)<- rownames(Single_Marker_Significance)
+weight_variable <- weight_variable[match(colnames(data1)[-1], names(weight_variable))]
+```
+
+Once the weights are designed we are ready to run the cforests on our dataset. Note that the forest are based on bagging algoritms, so the interaction sets (n-way snp interactions, where n>2) may vary from one forest to another depending on the set of variables sampled for the tree construction in each forest. So we run the the random forest 10 times and obtain only the interactions that are stable across all the forests or that occur in all the forest with high interaction score. The pooled interaction score from the 10 forests gives the average interaction score for each interaction.The Median_Forest_Score gives a median of the interaction scores across all the forests. It depends on at the discretion of the user as to what threshold to use for the Median_Forest_Score in their dataset. We prefer to select those interactions for future analysis that appear in atleast $90\%$ of the forests (9/10 forests). The following table shows a subset of list of interactions from the MEIF and their scores in each forest and over all the forests.
+
+[//]: # "Running the cforest"
+```{r weighted_epiforest_run, echo=FALSE, warning=FALSE, message=FALSE} 
+set.seed(100)
+Seeds=sample(1:1000000, 10)
+Importance_Score <- list()
+  
+##Parameters we use for the random forest. This can be trained prior to the forest application.
+#ntree=50
+#q=round(ntree/3,0)
+#mincriterion=0.95, minsplit = 30, minbucket = 30
+
+addq <- function(x) paste0("`", x, "`")
+fit.rf.formula <-  as.formula( paste(" PHENOTYPE ~(", paste( addq(setdiff(colnames(data1), c("PHENOTYPE"))), collapse = "+"), ")"))
+for(seed in Seeds[1:10])
+{
+  Importance_Score[[match(seed,Seeds)]] <- list()
+  set.seed(seed)
+  fit.rf <-cforest_new( fit.rf.formula, data = data1, weight_variable=c(0,weight_variable), mtry = round(ntree/3,0), ntree = ntree, control = ctree_control(teststat="quad", testtype="Univ", mincriterion=0.95, minsplit = 30, minbucket = 30)) 
+       
+  ##computing the SNP interaction metric for each forest run using the getInteractionMatrix function.
+  Importance_Score[[match(seed,Seeds)]] <-getInteractionMatrix(fit.rf, setdiff(colnames(data1), "PHENOTYPE"))
+}
+
+NiterChild=10
+Importance_Score_SRF <- Interaction_List_SRF <- list()
+##Recording the binary interaction score 
+for(i in 1:NiterChild)
+  Importance_Score_SRF[[i]] <- Importance_Score[[i]][[1]]
+
+##Recording the interaction sets and their corresponding score
+for(i in 1:NiterChild)
+{if(nrow(Importance_Score[[i]][[2]])!=0)
+  Interaction_List_SRF[[i]] <- Importance_Score[[i]][[2]][,-match("Forest_Score", colnames(Importance_Score[[i]][[2]]))]
+}
+
+##Summarizing over the SNP Interaction Metrix across the 10 forest using the GenerateInteractionList.
+All_Interactions_Stats_SRF <- GenerateInteractionList(Interaction_List_SRF, Importance_Score)
+
+##Extracting the higher order interactions (more than binary)
+indicator <- ncol(All_Interactions_Stats_SRF)-12
+All_Interactions_Stats_SRF$len_interaction <- sapply(1:nrow(All_Interactions_Stats_SRF), function(i)sum(All_Interactions_Stats_SRF[i, 1:indicator]!=""))
+
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF%>% filter(len_interaction>2)
+All_Interactions_Stats_SRF_Sub <- All_Interactions_Stats_SRF%>% filter(Median_Forest_Score>1)
+
+##Showing some of the interactions from the cforest.
+print( tail( All_Interactions_Stats_SRF[, -match("Sum_Forest_Score", colnames(All_Interactions_Stats_SRF))]))
+```
+
+##  Validating the interactions
+For each n-way interaction we test using linear regression/anova if there is any gain in likelihood on considering n-way SNP interactions in the model over just considering the additive effect of the n SNPs. For instance, for the 3 way interaction between SNP_118, SNP_164, SNP_213 we test the following:
+
+
+
+```{r validating_the_interactions1, echo=FALSE, warning=FALSE, message=FALSE} 
+interaction <- c("SNP_118", "SNP_164", "SNP_213")
+data_epistasis <- data1[, c("PHENOTYPE", interaction)]
+plotSNPInteraction(data_epistasis, unlist(interaction)) 
+```
+
+We consider only those interactions where the anova p-value is less than $5\%$. Here, in particular we selected the top 3 interactions that had very satisfactory anova results and showed the final interaction network. We also show the effect of interaction on the phenotype for each 3-way interaction.
+
+```{r validating_the_interactions2, echo=FALSE, warning=FALSE, message=FALSE} 
+library(reshape2)
+###Testing robustness of the interactions
+for(i in 1:nrow(All_Interactions_Stats_SRF_Sub))
+{
+  row_ind <- which(All_Interactions_Stats_SRF_Sub[i,]=="")[1]
+  interaction <- All_Interactions_Stats_SRF_Sub[i, 1:(row_ind-1)]
+  if(is.na(row_ind))
+    interaction <- All_Interactions_Stats_SRF_Sub[i,1:(ncol(All_Interactions_Stats_SRF)-13)]
+ 
+  data_epistasis <- data1[, unlist(c("PHENOTYPE", interaction))]
+  data_epistasis$SNP_Clubbed <- sapply(1:nrow(data_epistasis),FUN=function(x)paste(data_epistasis[x,2:ncol(data_epistasis)],collapse = ""))
+  data_epistasis$SNP_Clubbed <- as.factor(data_epistasis$SNP_Clubbed )
+ 
+  
+
+  ggplot(data_epistasis, aes(x=SNP_Clubbed, y=PHENOTYPE, fill=SNP_Clubbed))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ 
+  fit1 <- lm(as.formula(paste("PHENOTYPE~",paste(addq(interaction), collapse="+"))), data= data_epistasis)
+  fit2 <- lm(as.formula(paste("PHENOTYPE~SNP_Clubbed")), data= data_epistasis)
+  an <- anova(fit1, fit2, test="Chisq")
+  All_Interactions_Stats_SRF_Sub$val_pvalue[i] <- an$`Pr(>Chi)`[2]
+}
+###Testing against threshold 0.05
+##Choosing threshold
+#Select the interactor that have Median Score from Random forest in the top 80% of the scores and pvalue from the anova table in the bottom 80%.
+MScore_Threhsold <- quantile(All_Interactions_Stats_SRF_Sub$Median_Forest_Score, probs=0.80)
+Pval_Threhsold <- 10^-(quantile(-log10(All_Interactions_Stats_SRF_Sub$val_pvalue), probs=0.80))
+All_Interactions_Stats_SRF_Sub <- All_Interactions_Stats_SRF_Sub%>%filter(val_pvalue<Pval_Threhsold & Median_Forest_Score>MScore_Threhsold)
+All_Interactions_Stats_SRF_Sub <- All_Interactions_Stats_SRF_Sub[order(All_Interactions_Stats_SRF_Sub$val_pvalue),]
+#All_Interactions_Stats_SRF_Sub <- All_Interactions_Stats_SRF_Sub[1:3,]
+
+Interaction_Sets_SNPs <- All_Interactions_Stats_SRF_Sub[, colSums( All_Interactions_Stats_SRF_Sub != "") != 0]
+Interaction_Sets_SNPs$Index <- paste("i_",1:nrow(Interaction_Sets_SNPs), sep="")
+Interaction_Sets_SNPs_New <-data.frame(matrix(NA, nrow=nrow(Interaction_Sets_SNPs), ncol=17))
+Interaction_Sets_SNPs[ Interaction_Sets_SNPs==""]=NA
+#RowContain <- function(set, mat) sapply(1:nrow(mat), function(r)ifelse(all(set %in% mat[r,]), r, NA))
+indicator <- ncol(Interaction_Sets_SNPs)-15
+j=1
+
+for(i in 1:nrow(Interaction_Sets_SNPs))
+{
+  len <- Interaction_Sets_SNPs$len_interaction[i]
+  
+  if(len<=2)
+  {Interaction_Sets_SNPs_New[j,] <- Interaction_Sets_SNPs[i,c(1:2,(indicator+1):(indicator+15))]
+  j=j+1
+  }
+  else
+  {
+    combns <- combn(len, 2)
+    combns <- combns[,which(diff(combns)==1)]
+    t <- lapply(1:ncol(combns), function(row)Interaction_Sets_SNPs[i, c(combns[,row], (indicator+1):(indicator+15))])
+    for(k in 1:ncol(combns))
+      Interaction_Sets_SNPs_New[j+k-1,] <- t[[k]]
+    j=j+ncol(combns)
+  }
+  
+}
+colnames(Interaction_Sets_SNPs_New) <- c("SNP1", "SNP2", tail(colnames(Interaction_Sets_SNPs),15 ))
+
+library(visNetwork)
+Interaction_Sets_SNPs_New <- Interaction_Sets_SNPs_New%>%filter( len_interaction>2)
+Index_tally <- table( Interaction_Sets_SNPs_New$Index)
+Index_HD <- names( which(Index_tally>1))
+#For higher dimension netowrk
+#Interaction_Sets_SNPs_New <- Interaction_Sets_SNPs_New%>% filter(Index %in% Index_HD)
+Index_color <- rainbow(length(Index_HD))
+Interaction_edges <- Interaction_Sets_SNPs_New[,c("SNP1", "SNP2",  "Median_Forest_Score")]
+colnames(Interaction_edges) <- c("from", "to",  "width")
+Interaction_edges$label <- factor(Interaction_Sets_SNPs_New $Index)
+Interaction_edges$color <- ifelse(Interaction_Sets_SNPs_New$Index%in%Index_HD,Index_color[match(Interaction_Sets_SNPs_New$Index, Index_HD)], "lightgrey")
+Interaction_nodes <- data.frame(id= c(Interaction_Sets_SNPs_New$SNP1, Interaction_Sets_SNPs_New$SNP2),label= c(Interaction_Sets_SNPs_New$SNP1, Interaction_Sets_SNPs_New$SNP2))
+Interaction_nodes <- Interaction_nodes %>% distinct()
+Interaction_nodes <- Interaction_nodes [order(Interaction_nodes$label),]
+Interaction_nodes$group <- factor(Interaction_nodes$label)
+#Interaction_nodes$shape <- "point"
+Interaction_nodes <- Interaction_nodes %>% mutate(font.size = rep(25, nrow(Interaction_nodes)))
+Interaction_nodes$title <- paste0("<p><b>SNP:", Interaction_nodes$id,"</b><br> Gene:", Interaction_nodes$label,"</b><br> Type_Mutation:", Interaction_nodes$mutation_type, "</b><br> Position:", Interaction_nodes$position,"</b><br></p>")
+#visNetwork(Interaction_nodes, Interaction_edges,style = "font-family:Georgia;color:#ff499e;font-size:20px;text-align:center;")%>%visNodes( size=20,color = list(background = "lightblue",  border = "darkblue", highlight = "yellow"),
+#                                                                                                                                           shadow = list(enabled = TRUE, size = 8))%>% visIgraphLayout( layout="layout_nicely", smooth= TRUE, type="square")
+
+Interaction_nodes$shape <-"star"
+Interaction_nodes$color <- 	"darkorange"
+Interaction_nodes$font.size <-30
+
+Interaction_edges$label=""
+set.seed(100)
+visNetwork(Interaction_nodes, Interaction_edges,style = "font-family:Georgia;color:#ff499e;font-size:20px;text-align:center;")%>%visNodes( size=20,color = list(background = "lightblue",  border = "darkblue", highlight = "yellow"), shadow = list(enabled = TRUE, size = 8))%>% visIgraphLayout( layout="layout_nicely", smooth= TRUE, type="square")
+
+##Testing the effect of each interaction with anova test:
+i=1
+row_ind <- which(All_Interactions_Stats_SRF_Sub[i,]=="")[1]
+interaction <- All_Interactions_Stats_SRF_Sub[i, 1:(row_ind-1)]
+if(is.na(row_ind))
+  interaction <- All_Interactions_Stats_SRF_Sub[i,1:(ncol(All_Interactions_Stats_SRF)-13)]
+data_epistasis <- data1[, unlist(c("PHENOTYPE", interaction))]
+plotSNPInteraction(data_epistasis, unlist(interaction)) 
+  
+#i=2
+#row_ind <- which(All_Interactions_Stats_SRF_Sub[i,]=="")[1]
+#interaction <- All_Interactions_Stats_SRF_Sub[i, 1:(row_ind-1)]
+#if(is.na(row_ind))
+#  interaction <- All_Interactions_Stats_SRF_Sub[i,1:(ncol(All_Interactions_Stats_SRF)-13)]
+#data_epistasis <- data1[, unlist(c("PHENOTYPE", interaction))]
+#plotSNPInteraction(data_epistasis, unlist(interaction)) 
+
+#i=3
+#row_ind <- which(All_Interactions_Stats_SRF_Sub[i,]=="")[1]
+#interaction <- All_Interactions_Stats_SRF_Sub[i, 1:(row_ind-1)]
+#if(is.na(row_ind))
+#  interaction <- All_Interactions_Stats_SRF_Sub[i,1:(ncol(All_Interactions_Stats_SRF)-13)]
+#data_epistasis <- data1[, unlist(c("PHENOTYPE", interaction))]
+#plotSNPInteraction(data_epistasis, unlist(interaction)) 
+
+
+
+
+```
+# 2. Longitudinal Dataset 
+We have created a longitudinal dataset using the DGRP dataset where there is one 3-way SNP interaction and 4 marginal effects. The data comprises 50 other SNPs that are not associated with the simulated phenotype. Showing snippets of the data. The following table shows summary of the dataset
+
+```{r data_summary_LD, echo=TRUE, warning=FALSE, message=FALSE} 
+data2[ ,setdiff(colnames(data2), c("PHENOTYPE", "age"))]<- sapply(setdiff(colnames(data2), c("PHENOTYPE", "age")), function(coln)revalue(data2[[coln]],c("1"="0", "2"="2")))
+
+data2[ ,setdiff(colnames(data2), c("PHENOTYPE", "age"))]<- lapply(data2[ ,setdiff(colnames(data2), c("PHENOTYPE", "age"))], as.factor)
+
+print(summary(data2[,1:15]))
+#0: minor allele,  2:major allele
+dim(data2)
+print(data2[1:10,1:15])
+ggplot(data2, aes(x = PHENOTYPE, fill = age)) + geom_density(alpha = 0.9) + theme_classic()
+ggplot(data2, aes(y = PHENOTYPE, fill = factor(age))) + geom_boxplot() + theme_classic()
+source(file.path(SCRIPT_DIR, "Interactions_Score_Ageing.R"))
+
+
+```
+
+## How to run a cforest on the longitudinal data and obtain interactions?
+```{r cforest_run_LD, echo=TRUE, warning=FALSE, message=FALSE, dpi=300, out.width='300%', fig.width=12, fig.height=12} 
+
+Importance_Score <- list()
+
+##Parameters we use for the random forest
+ntree=50
+q=round(ntree/3,0)
+mincriterion=0.95
+minsplit = 30
+minbucket = 30
+
+addq <- function(x) paste0("`", x, "`")
+fit.rf.formula <-  as.formula( paste(" PHENOTYPE ~(", paste( addq(setdiff(colnames(data2), c("PHENOTYPE"))), collapse = "+"), ")"))
+
+set.seed(100)
+##Running the epiforest
+fit.rf <-partykit::cforest( fit.rf.formula, data = data2, mtry = round(ntree/3,0), ntree = ntree, control = ctree_control(teststat="quad", testtype="Univ", mincriterion=0.95, minsplit = 30, minbucket = 30)) 
+##Plotting a sample  tree from the forest.  
+cat("Fitting the cforest\n\n")
+print(fit.rf.formula)
+cat("Plotting a sample tree from the cforest\n\n")
+plot(gettree(fit.rf,tree=15))
+cat("Possible interactions from the above tree ")
+cat("SNP_160, SNP_5, SNP_190\n\n", "SNP_160, SNP_5\n\n", "SNP_160, SNP_36\n\n", "SNP_160, SNP_36, SNP_168, SNP_198\n\n")
+
+
+##computing the SNP interaction metric for each forest run.
+Importance_Score <-getInteractionMatrix(fit.rf)
+##print the SNP interaction metric from one such forest run.
+print(tail(Importance_Score[[2]], n=20))
+
+```
+
+
+
+## How to run a MEIF on the longitudinal data and obtain interactions?
+
+Since the random forest is a bagging based algorithm the set of interactions shown above may vary from one forest run to another. So we run the the random forest 10 times and obtain only the interactions that are stable across all the forests or that occur in all the forest with high interaction score. The pooled interaction score from the 10 forests gives the average interaction score for each interaction.The Median_Forest_Score gives a median of the interaction scores across all the forests. It depends on at the discretion of the user as to what threshold to use for the Median_Forest_Score in their dataset. In the data example, we have kept all the interactions with positive median forest score. Few interactions with top scores from MEIF is ahown below.
+
+[//]: # "Running the epiforest"
+```{r epiforest_run_LD, echo=FALSE, warning=FALSE, message=FALSE} 
+
+set.seed(100)
+Seeds=sample(1:1000000, 10)
+Importance_Score <- list()
+
+##Parameters we use for the random forest
+ntree=50
+q=round(ntree/3,0)
+mincriterion=0.95
+minsplit = 30
+minbucket = 30
+
+addq <- function(x) paste0("`", x, "`")
+fit.rf.formula <-  as.formula( paste(" PHENOTYPE ~(", paste( addq(setdiff(colnames(data2), c("PHENOTYPE"))), collapse = "+"), ")"))
+##Since the forest are based on bagging algprithm we run the random forest 10 times and obtain the interactions and their pooled interaction score from the 10 forests using the following loop
+for(seed in Seeds[1:10])
+{
+  Importance_Score[[match(seed,Seeds)]] <- list()
+  set.seed(seed)
+  ##Running the epiforest
+  fit.rf <-partykit::cforest( fit.rf.formula, data = data2, mtry = round(ntree/3,0), ntree = ntree, control = ctree_control(teststat="quad", testtype="Univ", mincriterion=0.95, minsplit = 30, minbucket = 30)) 
+  
+  ##computing the SNP interaction metric for each forest run.
+  Importance_Score[[match(seed,Seeds)]] <-getInteractionMatrix(fit.rf)
+}
+
+NiterChild=10
+Importance_Score_SRF <- Interaction_List_SRF <- list()
+##Recording the binary interaction score
+for(i in 1:NiterChild)
+  Importance_Score_SRF[[i]] <- Importance_Score[[i]][[1]]
+
+##Recording the interaction sets and their corresponding score
+for(i in 1:NiterChild)
+{if(nrow(Importance_Score[[i]][[2]])!=0)
+  Interaction_List_SRF[[i]] <- Importance_Score[[i]][[2]][,-match("Forest_Score", colnames(Importance_Score[[i]][[2]]))]
+}
+
+##Summarizing over the SNP Interaction Metrix across the 10 forest.
+All_Interactions_Stats_SRF <- GenerateInteractionList(Interaction_List_SRF, Importance_Score, "SRF")
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF%>% filter(Sum_Forest_Score>0)
+indicator <- ncol(All_Interactions_Stats_SRF)-12
+All_Interactions_Stats_SRF$len_interaction <- sapply(1:nrow(All_Interactions_Stats_SRF), function(i)sum(All_Interactions_Stats_SRF[i, 1:indicator]!=""))
+
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF %>% filter(len_interaction>2)
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF %>% filter(Median_Forest_Score>0)
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF[, colSums(All_Interactions_Stats_SRF  != "") != 0]
+
+##Showing some of the interactions from the cforest.
+print( tail( All_Interactions_Stats_SRF[, -match("Sum_Forest_Score", colnames(All_Interactions_Stats_SRF))]))
+```
+
+
+##  Validating the interactions
+For each n-way interaction we perform a anova test and a max t-test. We only consider those interactions that satisfy one of the above test (i.e. p-value significant from one of the above test).
+
+
+### Validating a set of N-way interactions using Max-T test
+
+::: {.b--gray .ba .bw2 .ma2 .pa4 .shadow-1}
+Step 1: Randomly draw any N SNPs from the whole genome (n times, 1000 in our case).
+
+Step 2: For each N-way SNP set compute and evaluate the Max-T test using the following:
+  
+  a: $N$ SNP interaction give rise to $2^N$ genotype combinations denoted by the set $G=\{1,\cdots, 2^N\}$. 
+
+b: Fit the regression: $(Y_i(t)=\beta_i t+\alpha+\epsilon )$, where $i\in G$,$Y_i(t)$ denote the phenotype of the population having genotype $i$ at time point $t$ and $\beta_i$ capture the effect of the genotype $i$ on the longitudinal variation of the phenotype. 
+
+Note that we assume that the genotype combination 1 as the baseline here denoting the combination arising from the interactions of major alleles. For instance for the DGRP data, SNP value 0 denote the major allele and 1 in G  denote the combinations with all 0’s.
+c: We test the following to asses if the effect of any alternative genotype combination is significantly different from the major allele combination:
+  $$H_0:(\beta_i-\beta_1 )=0, {for \, all \,  combination\, } i\in G ∖ \{1\}$$
+  $$H_1:(\beta_i-\beta_1 )\neq 0, {for \, some \,  combination\, } i\in G ∖ \{1\}$$
+  
+  
+  
+  The test statististics used to evaluate the above:
+  $T_{max}=max(T_2,........T_{(2^N )})$
+  where $T_i$ is statistics computing the difference in effect of the alternative genotype from the baseline genotype on the longitudinal variation of the phenotype.
+$$T_i=\frac{\hat{\beta}_i  -\hat{\beta}_1}{se(\hat{\beta}_i+\hat{\beta}_1)} =\frac{\hat{\beta}_i  -\hat{\beta}_1}{\sqrt{se^2(\hat{\beta}_i)+se^2(\hat{\beta}_1)} }$$
+  Note that $\hat{\beta}_i$'s are indenpendant for all i. We have already shown in the article that under $H_0$,
+$$T=\begin{pmatrix}T_1 \\
+                     T_2 \\
+                     \vdots\\
+                     \end{pmatrix}\sim {N}\Bigg{(}\begin{pmatrix} 0\\
+                                                             0\\
+                                                             \vdots\\
+                                                             \end{pmatrix},
+                              R= \begin{pmatrix}1 & 1/2 & \cdots\\
+                                                1/2 & 1 & \cdots\\                                             
+                                                \vdots\\
+                                                \end{pmatrix}\Bigg{)}$$
+
+
+One can easily compute the pvalue $P_{H_0}(T_{max}>t_{obs_{max}})$ using the above distribution.
+
+Step 3: Compute p-values for the epistasis set and the N-way SNP collections and check if:
+
+No of times p-values(Random SNPs groups) < p-value(Epistasis set).
+:::
+
+[//]: # "Saving the interaction table"
+```{r validating_the_interactions_longitudinal_data-v1, echo=FALSE, warning=FALSE, message=FALSE} 
+SNP_Sampling_List <- setdiff(colnames(data2), c("PHENOTYPE", "age", colnames(data2)[3:9]))
+
+for(j in 1:nrow(All_Interactions_Stats_SRF))
+{
+  NodeIndex <- tail(grep("Node",colnames(All_Interactions_Stats_SRF)),1)
+  snp_list <- setdiff(unlist(All_Interactions_Stats_SRF[j,1:NodeIndex]), "")
+  
+ 
+  data2$strain <- rep(1, nrow(data2))
+  colnames(data2)[1] <- "value"
+  data2 <- data2[,c("value", "age", "strain", setdiff(colnames(data2),c("value", "age", "strain")))]
+  Data_Phenotype_Cluster <- data2[, c("value", "age", "strain", snp_list)]
+  Data_Phenotype_Cluster$SNP_Clubbed <-     sapply(1:nrow(Data_Phenotype_Cluster),FUN=function(x)paste(Data_Phenotype_Cluster[x,4:ncol(Data_Phenotype_Cluster)],collapse = ""))
+  Data_Phenotype_Cluster$age <- factor( Data_Phenotype_Cluster$age)
+  Data_Phenotype_Cluster$SNP_Clubbed <- factor( Data_Phenotype_Cluster$SNP_Clubbed)
+
+  T1 <- Max.Test(Data_Phenotype_Cluster)
+  T2 <- Max.Test2(Data_Phenotype_Cluster)
+  
+  n_cores <- detectCores(logical=FALSE)
+  cl <- makeCluster(n_cores-1)
+  #on.exit(stopCluster(cl))
+  clusterEvalQ(cl, library("dplyr"))
+  clusterEvalQ(cl, library("parallel"))
+  clusterEvalQ(cl, library("foreach"))
+  doParallel::registerDoParallel(cl)
+  clusterExport(cl, c("Sample_within_cluster","Data_Phenotype_Cluster", "FilterCluster"))
+
+  niter = 100
+  lst_Random_SNP_clusters_Sampled <- list()
+  clusterEvalQ(cl, library("plyr"))
+  clusterExport(cl, c("Sample_within_cluster_ForRandomSamples_woBootstrap","Sample_within_cluster","data2",  "FilterCluster", "snp_list", "SNP_Sampling_List"))
+  lst_Random_SNP_clusters_Sampled <- parLapply(cl , 1:niter,  function(j) Sample_within_cluster_ForRandomSamples_woBootstrap( snp_list, data2, SNP_Sampling_List ))
+  RS_stat <-  sapply(1:niter, function(iter) Max.Test(lst_Random_SNP_clusters_Sampled[[iter]]))  
+  RS_stat2 <-  sapply(1:niter, function(iter) Max.Test2(lst_Random_SNP_clusters_Sampled[[iter]]))  
+ 
+  All_Interactions_Stats_SRF$maxt_pvalue[j]=sum(unlist(RS_stat[2,])<T1[[2]])
+  All_Interactions_Stats_SRF$maxt_pvalue_ap2[j]=sum(RS_stat2<T2)/length(RS_stat2)
+  
+  ##########LR TEST#########################################################################################
+  Data_Phenotype_Cluster[,-1] <- lapply(  Data_Phenotype_Cluster[,-1], factor)
+  addq <- function(x) paste0("`", x, "`")
+  fit.rf.formula1 <-  as.formula( paste(" value ~-1+",paste("age:", addq(snp_list), collapse = "+"),"+",paste( c("age",snp_list), collapse = ":")))
+  fit1 <- lm(fit.rf.formula1, data=Data_Phenotype_Cluster,REML = FALSE, control = lmerControl( optimizer = "nloptwrap", calc.derivs = FALSE))
+  fit.rf.formula2 <-  as.formula( paste(" value ~-1+",paste("age:", addq(snp_list), collapse = "+")))
+  fit2 <- lm(fit.rf.formula2, data=Data_Phenotype_Cluster,REML = FALSE, control = lmerControl( optimizer = "nloptwrap", calc.derivs = FALSE))
+  library(lmtest)
+  an <- lrtest(fit1,fit2)
+  All_Interactions_Stats_SRF$lrpval[j] <- na.omit(an$`Pr(>Chisq)`)
+  an <- anova(fit1,fit2, test="LRT")
+  All_Interactions_Stats_SRF$anpval[j] <- na.omit(an$`Pr(>Chisq)`)
+
+}
+cat("<BR><BR> The table below shows a part of SNP interaction table that satisfy either max-t test or anova test <BR><BR>.")
+print(  All_Interactions_Stats_SRF[, -match(c("Sum_Forest_Score", "maxt_pvalue_ap2"), colnames(All_Interactions_Stats_SRF))])
+
+
+
+```
+
+## Plotting the best interaction from our interaction table
+
+```{r validating_the_interactions_longitudinal_data-v2, echo=FALSE, warning=FALSE, message=FALSE} 
+
+###Testing against threshold 0.05 and selecting the interaction have Score from MEIF in the top 80% and lrpval in the bottom 80%
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF%>%filter(lrpval<0.01|maxt_pvalue<0.01)
+score_threshold_epiMEIF <- quantile(All_Interactions_Stats_SRF$Median_Forest_Score, 0.8)
+score_threshold_lrpval <- 10^-quantile(-log10(All_Interactions_Stats_SRF$lrpval+0.00000001), 0.8)
+All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF%>%filter(lrpval<score_threshold_lrpval&Median_Forest_Score>score_threshold_epiMEIF)
+
+#All_Interactions_Stats_SRF <- All_Interactions_Stats_SRF[nrow(All_Interactions_Stats_SRF),]
+
+Interaction_Sets_SNPs <- All_Interactions_Stats_SRF[, which(colSums( All_Interactions_Stats_SRF != "") != 0)]
+Interaction_Sets_SNPs$Index <- paste("i_",1:nrow(Interaction_Sets_SNPs), sep="")
+Interaction_Sets_SNPs_New <-data.frame(matrix(NA, nrow=nrow(Interaction_Sets_SNPs), ncol=18))
+Interaction_Sets_SNPs[ Interaction_Sets_SNPs==""]=NA
+#RowContain <- function(set, mat) sapply(1:nrow(mat), function(r)ifelse(all(set %in% mat[r,]), r, NA))
+j=1
+indicator <- ncol(Interaction_Sets_SNPs)-16
+
+for(i in 1:nrow(Interaction_Sets_SNPs))
+{
+  len <- Interaction_Sets_SNPs$len_interaction[i]
+  
+  if(len<=2)
+  {Interaction_Sets_SNPs_New[j,] <- Interaction_Sets_SNPs[i,c(1:2,(indicator+1):(indicator+15))]
+  j=j+1
+  }
+  else
+  {
+    combns <- combn(len, 2)
+    combns <- combns[,which(diff(combns)==1)]
+    t <- lapply(1:ncol(combns), function(row)Interaction_Sets_SNPs[i, c(combns[,row], (indicator+1):(indicator+16))])
+    for(k in 1:ncol(combns))
+      Interaction_Sets_SNPs_New[j+k-1,] <- t[[k]]
+    j=j+ncol(combns)
+  }
+  
+}
+colnames(Interaction_Sets_SNPs_New) <- c("SNP1", "SNP2", tail(colnames(Interaction_Sets_SNPs),16 ))
+
+library(visNetwork)
+
+Index_tally <- table(Interaction_Sets_SNPs_New$Index)
+Index_HD <-names(which(Index_tally>1))
+#For higher dimension netowrk
+#Interaction_Sets_SNPs_New <- Interaction_Sets_SNPs_New%>% filter(Index %in% Index_HD)
+Index_color <- rainbow(length(Index_HD))
+Interaction_edges <- Interaction_Sets_SNPs_New[,c("SNP1", "SNP2",  "Median_Forest_Score")]
+colnames(Interaction_edges) <- c("from", "to",  "width")
+Interaction_edges$label <- factor(Interaction_Sets_SNPs_New $Index)
+Interaction_edges$color <- ifelse(Interaction_Sets_SNPs_New$Index%in%Index_HD,Index_color[match(Interaction_Sets_SNPs_New$Index, Index_HD)], "lightgrey")
+Interaction_nodes <- data.frame(id= c(Interaction_Sets_SNPs_New$SNP1, Interaction_Sets_SNPs_New$SNP2),label= c(Interaction_Sets_SNPs_New$SNP1, Interaction_Sets_SNPs_New$SNP2))
+Interaction_nodes <- Interaction_nodes %>% distinct()
+Interaction_nodes <- Interaction_nodes [order(Interaction_nodes$label),]
+Interaction_nodes$group <- factor(Interaction_nodes$label)
+#Interaction_nodes$shape <- "point"
+Interaction_nodes <- Interaction_nodes %>% mutate(font.size = rep(25, nrow(Interaction_nodes)))
+Interaction_nodes$title <- paste0("<p><b>SNP:", Interaction_nodes$id,"</b><br> Gene:", Interaction_nodes$label,"</b><br> Type_Mutation:", Interaction_nodes$mutation_type, "</b><br> Position:", Interaction_nodes$position,"</b><br></p>")
+#visNetwork(Interaction_nodes, Interaction_edges,style = #"font-family:Georgia;color:#ff499e;font-size:20px;text-align:center;")%>%visNodes( size=20,color = list(background = "lightblue",  #border = "darkblue", highlight = "yellow"),
+#shadow = list(enabled = TRUE, size = 8))%>% visIgraphLayout( layout="layout_nicely", smooth= TRUE, type="square")
+
+Interaction_nodes$shape <-"star"
+Interaction_nodes$color <- 	"darkorange"
+Interaction_nodes$font.size <-30
+
+Interaction_edges$label=""
+set.seed(100)
+visNetwork(Interaction_nodes, Interaction_edges,style = "font-family:Georgia;color:#ff499e;font-size:20px;text-align:center;")%>%visNodes( size=20,color = list(background = "lightblue",  border = "darkblue", highlight = "yellow"), shadow = list(enabled = TRUE, size = 8))%>% visIgraphLayout( layout="layout_nicely", smooth= FALSE, type="square")
+
+
+##Testing the effect of each interaction with anova test:
+i=1
+NodeIndex <- tail(grep("Node",colnames(All_Interactions_Stats_SRF)),1)
+interaction <-setdiff(unlist(All_Interactions_Stats_SRF[i,1:NodeIndex]), "")
+data_epistasis <- data2[, unlist(c("value", "age", interaction))]
+plotSNPAgingInteraction(data_epistasis, unlist(interaction)) 
+
+```
+
