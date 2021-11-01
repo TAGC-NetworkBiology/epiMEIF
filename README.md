@@ -86,4 +86,4 @@ trace = FALSE, weight_variable = NULL)
 
 * tree- an integer, the number of the tree to extract from the forest.
 
-* **{weight_variable = an optional vector of weights for the predictors to be sampled at the root node. In the cforest function of the partykit package there was no option to assign weight to the predictors sampling scheme. Each predictor was equally probable to be sampled at the root node. We added this feature in our adaptation where the user can assigned weights to all the variables based on some pre-decided criteria.}**
+* **weight_variable = an optional vector of weights for the predictors to be sampled at the root node. In the cforest function of the partykit package there was no option to assign weight to the predictors sampling scheme. Each predictor was equally probable to be sampled at the root node. We added this feature in our adaptation where the user can assigned weights to all the variables based on some pre-decided criteria.**
