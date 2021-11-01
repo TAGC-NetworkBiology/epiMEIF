@@ -87,3 +87,56 @@ trace = FALSE, weight_variable = NULL)
 * tree- an integer, the number of the tree to extract from the forest.
 
 * **weight_variable = an optional vector of weights for the predictors to be sampled at the root node. In the cforest function of the partykit package there was no option to assign weight to the predictors sampling scheme. Each predictor was equally probable to be sampled at the root node. We added this feature in our adaptation where the user can assigned weights to all the variables based on some pre-decided criteria.**
+
+
+#### 2. getInteractionMatrix
+
+Generates the interaction score matrix from each cforest object.
+
+#### Usage
+```{r }
+getInteractionMatrix(output)
+```
+
+#### Parameters
+* output- a object of class cforest from which the interaction lists need to generated 
+
+#### 3. GenerateInteractionList
+
+
+
+#### Usage
+```{r }
+GenerateInteractionList(Interaction_List, Importance_Score_list)
+```
+
+#### Parameters
+* Interaction_List- 
+
+* Importance_Score_list- 
+
+#### 4. plotSNPInteraction
+
+
+#### Usage
+```{r }
+plotSNPInteraction( data_epistasis, snp_list)
+```
+
+#### Parameters
+* Interaction_List- 
+
+* Importance_Score_list- 
+
+
+#### 5. Max.Test.Age1
+
+
+#### Usage
+```{r }
+Max.Test.Age1(Cluster)
+```
+
+#### Parameters
+* Cluster
+
