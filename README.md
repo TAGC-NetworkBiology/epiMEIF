@@ -50,4 +50,40 @@ trace = FALSE, weight_variable = NULL)
 
 * strata- 	an optional factor for stratified sampling.
 
+* na.action- a function which indicates what should happen when the data contain missing value.
 
+* control- a list with control parameters, see ctree_control. The default values correspond to those of the default values used by cforest from the party package. saveinfo = FALSE leads to less memory hungry representations of trees. Note that arguments mtry, cores and applyfun in ctree_control are ignored for cforest, because they are already set.
+
+* ytrafo- an optional named list of functions to be applied to the response variable(s) before testing their association with the explanatory variables. Note that this transformation is only performed once for the root node and does not take weights into account (which means, the forest bootstrap or subsetting is ignored, which is almost certainly not a good idea). Alternatively, ytrafo can be a function of data and weights. In this case, the transformation is computed for every node and the corresponding weights. This feature is experimental and the user interface likely to change.
+
+* scores-	an optional named list of scores to be attached to ordered factors.
+
+* ntree- Number of trees to grow for the forest.
+
+* perturb- a list with arguments replace and fraction determining which type of resampling with replace = TRUE referring to the n-out-of-n bootstrap and replace = FALSE to sample splitting. fraction is the portion of observations to draw without replacement. Honesty (experimental): If fraction has two elements, the first fraction defines the portion of observations to be used for tree induction, the second fraction defines the portion of observations used for parameter estimation. The sum of both fractions can be smaller than one but most not exceed one. Details can be found in Section 2.4 of Wager and Athey (2018).
+
+* mtry- number of input variables randomly sampled as candidates at each node for random forest like algorithms. Bagging, as special case of a random forest without random input variable sampling, can be performed by setting mtry either equal to Inf or manually equal to the number of input variables.
+
+* applyfun- an optional lapply-style function with arguments function(X, FUN, ...). It is used for computing the variable selection criterion. The default is to use the basic lapply function unless the cores argument is specified (see below).
+
+* cores- numeric. If set to an integer the applyfun is set to mclapply with the desired number of cores.
+
+* trace-	a logical indicating if a progress bar shall be printed while the forest grows.
+
+* object- An object as returned by cforest
+
+* newdata- An optional data frame containing test data.
+
+* type- a character string denoting the type of predicted value returned, ignored when argument FUN is given. For "response", the mean of a numeric response, the predicted class for a categorical response or the median survival time for a censored response is returned. For "prob" the matrix of conditional class probabilities (simplify = TRUE) or a list with the conditional class probabilities for each observation (simplify = FALSE) is returned for a categorical response. For numeric and censored responses, a list with the empirical cumulative distribution functions and empirical survivor functions (Kaplan-Meier estimate) is returned when type = "prob". "weights" returns an integer vector of prediction weights. For type = "where", a list of terminal node ids for each of the trees in the forest ist returned.
+
+* OOB- a logical defining out-of-bag predictions (only if newdata = NULL). If the forest was fitted with honesty, this option is ignored.
+
+* FUN- a function to compute summary statistics. Predictions for each node have to be computed based on arguments (y, w) where y is the response and w are case weights.
+
+* simplify- a logical indicating whether the resulting list of predictions should be converted to a suitable vector or matrix (if possible).
+
+* scale- a logical indicating scaling of the nearest neighbor weights by the sum of weights in the corresponding terminal node of each tree. In the simple regression forest, predicting the conditional mean by nearest neighbor weights will be equivalent to (but slower!) the aggregation of means.
+
+* tree- an integer, the number of the tree to extract from the forest.
+
+* \boldsymbol{weight_variable = an optional vector of weights for the predictors to be sampled at the root node. In the cforest function of the partykit package there was no option to assign weight to the predictors sampling scheme. Each predictor was equally probable to be sampled at the root node. We added this feature in our adaptation where the user can assigned weights to all the variables based on some pre-decided criteria.}
