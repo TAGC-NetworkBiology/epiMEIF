@@ -115,3 +115,65 @@ Max.Test.Age1(Cluster)
 #### Parameters
 * Cluster- dataset having the phenotype and the SNPs/predictors involved in interaction
 
+Note that there were some additional functions as well in the source code of Interaction_Score_Age1, but the above functions highlighted are the primary functions. We have shown the usage of the above functions on sample datasets in the html file (epiMEIF_illustration). 
+
+## Interaction_Score_Ageing
+
+The primary functions for epiMEIF implementation on longitudinal dataset remains the same as the functions in Interaction_Score_Age1. The way the code is implemented for each part is different, hence the user needs to used the above source code for implementing epiMEIF on longitudinal dataset.
+
+### Functions
+#### 1. cforest_gen
+
+#### Usage 
+same as earlier
+
+#### 2. getInteractionMatrix
+
+#### Usage 
+same as earlier
+
+#### 3. GenerateInteractionList
+
+#### Usage 
+same as earlier
+
+#### 4. plotSNPAgingInteraction
+
+This function plots the effect of interactions of snps under investigation on the phenotype and also shows the effect of individual snp (in the snp_list) on the phenotype.
+
+#### Usage
+```{r }
+plotSNPInteraction( data_epistasis, snp_list)
+```
+
+#### Parameters
+* data_epistasis- a data frame containing the variables of interests (SNPs and other covariates).
+* snp_list- the list of snps whose interaction effects is under investigation.
+
+
+#### 5. Max.Test
+
+This function implements the max t test on a dataset having the phenotype and the SNPs/predictors involved in interaction.
+
+#### Usage
+```{r }
+Max.Test(Cluster)
+```
+
+#### Parameters
+* Cluster- dataset having the phenotype and the SNPs/predictors involved in interaction
+
+#### 6. Final.Contrast.MaxTest
+
+The functions tests if the chosen cluster (N snps) from the MEIF produces a more meaningful cluster than any random collection of N snps. Th max t pvalue of the chosen cluster is compared with the pvalue generated from the random collection.
+
+#### Usage
+```{r }
+Final.Contrast.MaxTest(listCluster,Cluster1, niter)
+```
+
+#### Parameters
+* listCluster- This is a group of data with snps randomly drawn from the entire genome to be benchmarked with the epistatic clusters
+* Cluster1- This is the data with the snps from the Interaction List of epiMEIF
+* niter- Number of iteration or number of times snps are randomly drawn for benchmarking.
+
