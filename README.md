@@ -11,8 +11,7 @@ Keywords: GWAS, Random Forest, Epistatic interaction.
 
 # Goal of the github
 
-This github project contains the instructions and material to implement the above method on any cross-sectional and longitudinal dataset. An RMD file (epiMEIF_Illustration) is loaded which retrieves data from the folder data and R codes from the folder codes and shows the step by step implementation of the epiMEIF method. 
-In this html report (epiMEIF_Illustration) we illustrate how to run the cforest part of the epiMEIF and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network.
+This github project contains the instructions and material to implement the above method on any cross-sectional and longitudinal dataset. 
 
 # Description of the dataset
 The dataset (in folder data) contains a similated cross-sectional and a longitudinal dataset that is simulated based on the cardiac phenotype data of drosopohila population (DGRP). The R code Creating_Age1_Dataset illustrates how the data are simulated.
@@ -177,3 +176,8 @@ Final.Contrast.MaxTest(listCluster,Cluster1, niter)
 * Cluster1- This is the data with the snps from the Interaction List of epiMEIF
 * niter- Number of iteration or number of times snps are randomly drawn for benchmarking.
 
+
+
+# Implementation of the code
+
+An RMD file (epiMEIF_Illustration) is loaded which retrieves data from the folder data and R codes from the folder codes and shows the step by step implementation of the epiMEIF method. In the html report (epiMEIF_Illustration) we illustrate how to run the cforest part of the epiMEIF and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network.
