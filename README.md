@@ -20,3 +20,34 @@ The dataset (in folder data) contains a similated cross-sectional and a longitud
 
 # Description of the code
 
+The R codes are saved in the folder codes. We have created two primary scripts: Interaction_Score_Age1 (for cross-sectional data), Interaction_Score_Ageing (for longitudinal data). The following section will elaborate on the different functions in Interaction_Score_Age1.
+
+## Interaction_Score_Age1
+### Functions
+#### 1. cforest_gen
+
+Generalized adaptation of cforest function from partykit R package that allows the user to apply a weighted conditional inference forest on any dataset.
+
+#### Usage
+```{r }
+cforest_gen(formula, data, weights, subset, offset, cluster, strata, na.action = na.pass, control = ctree_control(teststat = "quad", testtype = "Univ", mincriterion = 0,
+saveinfo = FALSE), ytrafo = NULL, scores = NULL, ntree = 500L, perturb = list(replace = FALSE, fraction = 0.632), mtry = ceiling(sqrt(nvar)), applyfun = NULL, cores = NULL, 
+trace = FALSE, weight_variable = NULL)
+```
+
+#### Parameters
+* formula- a symbolic description of the model to be fit.
+
+* data- a data frame containing the variables in the model.
+
+* subset- an optional vector specifying a subset of observations to be used in the fitting process.
+
+* weights- an optional vector of weights to be used in the fitting process. Non-negative integer valued weights are allowed as well as non-negative real weights. Observations are sampled (with or without replacement) according to probabilities weights / sum(weights). The fraction of observations to be sampled (without replacement) is computed based on the sum of the weights if all weights are integer-valued and based on the number of weights greater zero else. Alternatively, weights can be a double matrix defining case weights for all ncol(weights) trees in the forest directly. This requires more storage but gives the user more control.
+
+* offset- an optional vector of offset values.
+
+* cluster- an optional factor indicating independent clusters. Highly experimental, use at your own risk.
+
+* strata- 	an optional factor for stratified sampling.
+
+
