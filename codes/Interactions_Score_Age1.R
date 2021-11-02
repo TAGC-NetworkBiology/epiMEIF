@@ -1,4 +1,4 @@
-  library(tidyverse)
+library(tidyverse)
 library(caret)
 library(glmnet)
 library(lmerTest)
@@ -13,6 +13,9 @@ library( dplyr)
 library( partykit)
 library( matrixStats)
 library( grr)
+library( Rcpp)
+# The following function .start_subset, constparties, .y2infl, ctree_new are mainly taken from the cforest function in the
+# partkit package to make adaptations on the cforest and introduce new weighted version of conditional inference trees.
 
 .start_subset <- function(data) {
   ret <- 1:NROW(model.frame(data))
@@ -94,7 +97,100 @@ constparties <- function(nodes, data, weights, fitted = NULL, terms = NULL, info
   return(infl)
 }
 
-cforest_new <- function
+
+ctree_new <- function(formula, data, subset, weights, weight_variable, na.action = na.pass, offset, cluster,
+                      control = ctree_control(...), ytrafo = NULL, converged = NULL, scores = NULL,
+                      doFit = TRUE, ...) 
+{
+  
+  ## set up model.frame() call
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "subset","weight_variable", "na.action", "weights",
+               "offset", "cluster", "scores"), names(mf), 0L)
+  mf <- mf[c(1L, m)]
+  mf$yx <- "none"
+  if (is.function(ytrafo)) {
+    if (all(c("y", "x") %in% names(formals(ytrafo))))
+      mf$yx <- "matrix"
+  }
+  mf$nmax <- control$nmax
+  ## evaluate model.frame
+  mf[[1L]] <- quote(partykit::extree_data)
+  
+  d <- eval(mf, parent.frame())
+  subset <- .start_subset(d)
+  
+  weights <- model.weights(model.frame(d))
+  
+  if (is.function(ytrafo)) {
+    if (is.null(control$update))
+      control$update <- TRUE
+    nf <- names(formals(ytrafo))
+    if (all(c("data", "weights", "control") %in% nf))
+      ytrafo <- ytrafo(data = d, weights = weights, control = control)
+    nf <- names(formals(ytrafo))
+    stopifnot(all(c("subset", "weights", "info", "estfun", "object") %in% nf) ||
+                all(c("y", "x", "weights", "offset", "start") %in% nf))
+  } else {
+    if (is.null(control$update))
+      control$update <- FALSE
+    stopifnot(length(d$variables$x) == 0)
+    mfyx <- model.frame(d, yxonly = TRUE)
+    mfyx[["(weights)"]] <- mfyx[["(offset)"]] <- NULL
+    yvars <- names(mfyx)
+    for (yvar in yvars) {
+      sc <- d[[yvar, "scores"]]
+      if (!is.null(sc))
+        attr(mfyx[[yvar]], "scores") <- sc
+    }
+    Y <- .y2infl(mfyx, response = d$variables$y, ytrafo = ytrafo)
+    if (!is.null(iy <- d[["yx", type = "index"]])) {
+      Y <- rbind(0, Y)
+    }
+    ytrafo <- function(subset, weights, info, estfun, object, ...)
+      list(estfun = Y, unweighted = TRUE)
+    ### unweighted = TRUE prevents estfun / w in extree_fit
+  }
+  if (is.function(converged)) {
+    stopifnot(all(c("data", "weights", "control") %in% names(formals(converged))))
+    converged <- converged(d, weights, control = control)
+  } else {
+    converged <- TRUE
+  }
+  d$variable$z <- weight_variable
+  update <- function(subset, weights, control, doFit = TRUE)
+    partykit::extree_fit(data = d, trafo = ytrafo, converged = converged, partyvars = d$variable$z,
+                         subset = subset, weights = weights, ctrl = control, doFit = doFit)
+  if (!doFit) return(list(d = d, update = update))
+  tree <- update(subset = subset, weights = weights, control = control)
+  trafo <- tree$trafo
+  tree <- tree$nodes
+  
+  mf <- model.frame(d)
+  if (is.null(weights)) weights <- rep(1, nrow(mf))
+  
+  fitted <- data.frame("(fitted)" = fitted_node(tree, mf),
+                       "(weights)" = weights,
+                       check.names = FALSE)
+  fitted[[3]] <- mf[, d$variables$y, drop = TRUE]
+  names(fitted)[3] <- "(response)"
+  ret <- party(tree, data = mf, fitted = fitted,
+               info = list(call = match.call(), control = control))
+  ret$update <- update
+  ret$trafo <- trafo
+  class(ret) <- c("constparty", class(ret))
+  
+  ### doesn't work for Surv objects
+  # ret$terms <- terms(formula, data = mf)
+  ret$terms <- d$terms$all
+  ### need to adjust print and plot methods
+  ### for multivariate responses
+  ### if (length(response) > 1) class(ret) <- "party"
+  return(ret)
+  
+}
+
+cforest_gen <- function
 (
   formula,
   data,   
@@ -240,98 +336,10 @@ cforest_new <- function
   
   return(ret)
 }
-ctree_new <- function(formula, data, subset, weights, weight_variable, na.action = na.pass, offset, cluster,
-                      control = ctree_control(...), ytrafo = NULL, converged = NULL, scores = NULL,
-                      doFit = TRUE, ...) 
-{
-  
-  ## set up model.frame() call
-  mf <- match.call(expand.dots = FALSE)
-  m <- match(c("formula", "data", "subset","weight_variable", "na.action", "weights",
-               "offset", "cluster", "scores"), names(mf), 0L)
-  mf <- mf[c(1L, m)]
-  mf$yx <- "none"
-  if (is.function(ytrafo)) {
-    if (all(c("y", "x") %in% names(formals(ytrafo))))
-      mf$yx <- "matrix"
-  }
-  mf$nmax <- control$nmax
-  ## evaluate model.frame
-  mf[[1L]] <- quote(partykit::extree_data)
-  
-  d <- eval(mf, parent.frame())
-  subset <- .start_subset(d)
-  
-  weights <- model.weights(model.frame(d))
-  
-  if (is.function(ytrafo)) {
-    if (is.null(control$update))
-      control$update <- TRUE
-    nf <- names(formals(ytrafo))
-    if (all(c("data", "weights", "control") %in% nf))
-      ytrafo <- ytrafo(data = d, weights = weights, control = control)
-    nf <- names(formals(ytrafo))
-    stopifnot(all(c("subset", "weights", "info", "estfun", "object") %in% nf) ||
-                all(c("y", "x", "weights", "offset", "start") %in% nf))
-  } else {
-    if (is.null(control$update))
-      control$update <- FALSE
-    stopifnot(length(d$variables$x) == 0)
-    mfyx <- model.frame(d, yxonly = TRUE)
-    mfyx[["(weights)"]] <- mfyx[["(offset)"]] <- NULL
-    yvars <- names(mfyx)
-    for (yvar in yvars) {
-      sc <- d[[yvar, "scores"]]
-      if (!is.null(sc))
-        attr(mfyx[[yvar]], "scores") <- sc
-    }
-    Y <- .y2infl(mfyx, response = d$variables$y, ytrafo = ytrafo)
-    if (!is.null(iy <- d[["yx", type = "index"]])) {
-      Y <- rbind(0, Y)
-    }
-    ytrafo <- function(subset, weights, info, estfun, object, ...)
-      list(estfun = Y, unweighted = TRUE)
-    ### unweighted = TRUE prevents estfun / w in extree_fit
-  }
-  if (is.function(converged)) {
-    stopifnot(all(c("data", "weights", "control") %in% names(formals(converged))))
-    converged <- converged(d, weights, control = control)
-  } else {
-    converged <- TRUE
-  }
-  d$variable$z <- weight_variable
-  update <- function(subset, weights, control, doFit = TRUE)
-    partykit::extree_fit(data = d, trafo = ytrafo, converged = converged, partyvars = d$variable$z,
-                         subset = subset, weights = weights, ctrl = control, doFit = doFit)
-  if (!doFit) return(list(d = d, update = update))
-  tree <- update(subset = subset, weights = weights, control = control)
-  trafo <- tree$trafo
-  tree <- tree$nodes
-  
-  mf <- model.frame(d)
-  if (is.null(weights)) weights <- rep(1, nrow(mf))
-  
-  fitted <- data.frame("(fitted)" = fitted_node(tree, mf),
-                       "(weights)" = weights,
-                       check.names = FALSE)
-  fitted[[3]] <- mf[, d$variables$y, drop = TRUE]
-  names(fitted)[3] <- "(response)"
-  ret <- party(tree, data = mf, fitted = fitted,
-               info = list(call = match.call(), control = control))
-  ret$update <- update
-  ret$trafo <- trafo
-  class(ret) <- c("constparty", class(ret))
-  
-  ### doesn't work for Surv objects
-  # ret$terms <- terms(formula, data = mf)
-  ret$terms <- d$terms$all
-  ### need to adjust print and plot methods
-  ### for multivariate responses
-  ### if (length(response) > 1) class(ret) <- "party"
-  return(ret)
-  
-}
 
+
+
+#The function rowMatch checks if Rows of matrix A matches with rows of matrix B
 rowMatch <- function(A,B) {
   # Rows in A that match the rows in B
   # The row indexes correspond to A
@@ -342,9 +350,11 @@ rowMatch <- function(A,B) {
   match(b, a)
 }
 
+#The function null returns NA if the parameter is empty and have length 0.
 null <- function(n)ifelse(length(n)==0,NA,n)      
 addq <- function(x) paste0("`", x, "`")
 
+#This function computes the size of the tree
 tree.size <- function( tree) {
   if( is.null( tree)) {
     return( 0)
@@ -353,7 +363,7 @@ tree.size <- function( tree) {
   }
 }
 
-
+#For any node of the tree from the forest, the following function returns the left and right child nodes along with the node of interest (x)
 child_pair_return <- function( x)
 {
   if( is.null(x$split))
@@ -369,6 +379,7 @@ child_pair_return <- function( x)
 }
 
 #var_names <- attr(output$terms, "term.labels")
+#For a tree t, the following function represents in a matrix form- all the nodes of t and their corresponding left and right child node.
 GetPairVars <- function( t, var_num, var_names)
 {  
   #compute the number of nodes in a tree
@@ -494,14 +505,6 @@ GetPairVars <- function( t, var_num, var_names)
   return(list(tree_mat3, tree_mat2, tree_mat))
 }
 
-rowmatch <- function( A, B) { 
-  # Rows in A that match the rows in B
-  f <- function(...) paste(..., sep=":")
-  if( !is.matrix(B)) B <- matrix( B, 1, length( B))
-  a <- do.call( "f", as.data.frame( A))
-  b <- do.call( "f", as.data.frame( B))
-  ifelse( is.na( match( b, a)), 0, match( b, a))
-}
 
 row.matches <- function(y, X){
   i <- seq(nrow(X))
@@ -519,7 +522,7 @@ swap <-function(vec)
   return(vec)  
 }
 
-
+#The following function computes the proportion of times an interaction is repeated in the forest
 Var_Interaction_Proportions <- function( tree_mat3)
 {
   #var_num=ncol(tree_mat3)-2
@@ -571,7 +574,8 @@ Var_Interaction_Proportions <- function( tree_mat3)
   
 }
 
-getInteractionMatrix <- function(output, Snp_List)
+#The following function computes the Interaction Score Matrix from a forest object
+getInteractionMatrix <- function(output)
 {
   
   ntree=length(output$nodes)
@@ -583,9 +587,6 @@ getInteractionMatrix <- function(output, Snp_List)
   
    
   Interaction_Lists <- list()
-  #Snp_List <- c(SNPs_Selected, SNPs_for_cf)
-  #Snp_Map <- cbind(Snp_List, paste("V", 1:length(Snp_List), sep=""))
-  #paste("SNP_", 1:10, sep="")  
   Var_Interaction_Mat <- list()
   for( ind in 1:ntree)
   {
@@ -716,6 +717,7 @@ getInteractionMatrix <- function(output, Snp_List)
   }
 }
 
+#The epiMEIF method proposed to fit 10 cforests or MEIFs and then obtained the interaction sets/lists based on the pooled interaction score matrix from all the forest. This function summarizes the SNP Interaction Metrix across the 10 forest and generates the pooled interaction list.
 GenerateInteractionList <- function(Interaction_List, Importance_Score_list)
 {
   
@@ -757,6 +759,7 @@ GenerateInteractionList <- function(Interaction_List, Importance_Score_list)
   return(All_Interactions_Stats)
 }
 
+#This function plots the effect of interactions of snps under investigation on the phenotype and also shows the effect of individual snp (in the snp_list) on the phenotype.
 plotSNPInteraction <- function(data_epistasis, snp_list)
 {
   
@@ -781,8 +784,9 @@ plotSNPInteraction <- function(data_epistasis, snp_list)
   print(an)
  }
 
-
+#The following function checks if the components of set are contained in any row of mat
 RowContain <- function(set, mat) sapply(1:nrow(mat), function(r)ifelse(all(set %in% mat[r,]), r, NA))
+
 
 interaction_list <- function(var)
 {
@@ -797,7 +801,8 @@ interaction_list <- function(var)
     return(list())
 }
 
-library(Rcpp)
+#The following function is written to fasten up the speed of comparing rows which is required when the Interaction Scores are summarized across the 10 forest.
+#This function is used in the function GenerateInteractionMatrix
 cppFunction(
 'NumericVector matchRow(int I, CharacterMatrix x, CharacterMatrix y) {
    int nrow = x.nrow();
@@ -859,8 +864,7 @@ cppFunction(
 #Takes 57 secs
 
 
-
-
+#This function implements the max t test on a dataset having the phenotype and the SNPs/predictors involved in interaction.
 Max.Test.Age1 <- function(Cluster)
 {
   
