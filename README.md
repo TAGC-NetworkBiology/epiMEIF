@@ -202,7 +202,7 @@ MEIF( xnam, MERF.lDB, ni, Zi, Yi, Xi, ntree, mtry, nodesize, sigmasqzero = NULL,
 * bizero- Starting values of the random effects: a list of n matrices of $q \times 1$ unknown vector of random effects. 
 * cizero- Starting values of the fixed effects( not part of random forest): a list of n matrices of $n\times 1$ unknown vector of fixed effects. 
 * F.niter- The number of iterations forced to avoid early stopping (e.g. 100).
-* max.niter	#Maximum number of iterations, in addition to the F.niter forced iterations (e.g. 300).
+* max.niter- Maximum number of iterations, in addition to the F.niter forced iterations (e.g. 300).
 * smallest.Jump.allowed- A given small value (e.g. 1e-4).
 * verbose- Logical variable reporting if R should report extra information on progress?
 * threads-  Number of threads used for parallelization
