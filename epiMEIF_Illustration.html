@@ -597,8 +597,8 @@
 <span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>train[ cols] <span class="ot">&lt;-</span> <span class="fu">lapply</span>( train[ cols], <span class="cf">function</span>(i)<span class="fu">factor</span>(i,<span class="at">ordered=</span><span class="cn">TRUE</span>))</span>
 <span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a><span class="fu">gc</span>(<span class="at">verbose=</span><span class="cn">TRUE</span>)</span></code></pre></div>
 <pre><code>##           used  (Mb) gc trigger  (Mb) max used  (Mb)
-## Ncells 3382721 180.7    5640575 301.3  5640575 301.3
-## Vcells 8536740  65.2   14786789 112.9 14786789 112.9</code></pre>
+## Ncells 3383477 180.7    5641647 301.3  5641647 301.3
+## Vcells 8536784  65.2   14792990 112.9 14792990 112.9</code></pre>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>( <span class="dv">415</span>)</span>
 <span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a><span class="do">#######################Defining the variables for calling MEIF###########################################</span></span>
@@ -659,7 +659,7 @@
 <span id="cb49-34"><a href="#cb49-34" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb49-35"><a href="#cb49-35" aria-hidden="true" tabindex="-1"></a><span class="do">#######################Running the MEIF###########################################</span></span>
 <span id="cb49-36"><a href="#cb49-36" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb49-37"><a href="#cb49-37" aria-hidden="true" tabindex="-1"></a><span class="fu">system.time</span>(output<span class="ot">&lt;-</span><span class="fu">MERF</span>(xnam,</span>
+<span id="cb49-37"><a href="#cb49-37" aria-hidden="true" tabindex="-1"></a><span class="fu">system.time</span>(output<span class="ot">&lt;-</span><span class="fu">MEIF</span>(xnam,</span>
 <span id="cb49-38"><a href="#cb49-38" aria-hidden="true" tabindex="-1"></a>                        MERF.lDB,</span>
 <span id="cb49-39"><a href="#cb49-39" aria-hidden="true" tabindex="-1"></a>                         ni,</span>
 <span id="cb49-40"><a href="#cb49-40" aria-hidden="true" tabindex="-1"></a>                         Zi,</span>
@@ -679,7 +679,7 @@
 <span id="cb49-54"><a href="#cb49-54" aria-hidden="true" tabindex="-1"></a>                         <span class="at">verbose =</span> <span class="cn">TRUE</span>))</span></code></pre></div>
 <pre><code>## R Version:  R version 4.0.2 (2020-06-22)</code></pre>
 <pre><code>##    user  system elapsed 
-##   40.87    7.71  234.99</code></pre>
+##   44.61    7.80  236.86</code></pre>
 <div class="sourceCode" id="cb52"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">summary</span>(output))</span></code></pre></div>
 <pre><code>##                  Length Class   Mode   
 ## Jump[r]            1    -none-  numeric
