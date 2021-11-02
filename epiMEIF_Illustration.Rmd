@@ -18,7 +18,7 @@ params:
 
 We have developed a novel approach of epistasis detection using mixed-effect conditional inference forest model. The primary goal of our approach is to identify the epistatic interactions networks of genetic variants associated with the phenotypic variation from GWAS population studies. A mixed effect conditional inference forest (MEIF) or conditional inference forest (cforest) is fitted on a group of potential causal SNPs set and the tree structure in the forest facilitates us to identify n-way SNP interactions between the explanatory SNPs that contribute to the phenotypic variability. Furthermore, we have developed statistical approaches using max-t test and anova test to methodologically validate the epistatic clusters from the epiMEIF and statistically test the enrichment of the clusters. Overall, the MEIF along with the additional testing strategies provides a generalized way to obtain genetic variants and their higher order interactions from any GWAS data.
 
-In this html report we illustrate how to run the cforest part of the epiMEIF R package and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network.
+In this html report we illustrate how to run the cforest part of the epiMEIF method and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network. Finally we show how the MEIF function in the epiMEIF method can be executed which combined the mixed effects modelling with cforest.
 
 ```{r setOptions, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, error = FALSE, fig.pos = "!H")
@@ -67,6 +67,7 @@ DATA_DIR <- file.path( WORKING_DIR, "data")
 SCRIPT_DIR <- file.path( WORKING_DIR, "codes")
 data1 <- readRDS(file.path(DATA_DIR, "Age1_Dataset-3I.RDS"))
 data2 <- readRDS(file.path(DATA_DIR, "Ageing_Dataset.RDS"))
+data3 <- readRDS(file.path(DATA_DIR, "Age1_Dataset_MEIF.RDS"))
 source( file.path( SCRIPT_DIR, "Interactions_Score_Age1.R"))
 
 ```
@@ -148,11 +149,12 @@ Once the weights are designed we are ready to run the cforests on our dataset. N
 
 [//]: # "Running the cforest"
 ```{r weighted_epiforest_run, echo=FALSE, warning=FALSE, message=FALSE} 
+
 set.seed(100)
 Seeds=sample(1:1000000, 10)
 Importance_Score <- list()
   
-##Parameters we use for the random forest. This can be trained prior to the forest application.
+## Parameters we use for the random forest. This can be trained prior to the forest application.
 #ntree=50
 #q=round(ntree/3,0)
 #mincriterion=0.95, minsplit = 30, minbucket = 30
@@ -163,10 +165,10 @@ for(seed in Seeds[1:10])
 {
   Importance_Score[[match(seed,Seeds)]] <- list()
   set.seed(seed)
-  fit.rf <-cforest_new( fit.rf.formula, data = data1, weight_variable=c(0,weight_variable), mtry = round(ntree/3,0), ntree = ntree, control = ctree_control(teststat="quad", testtype="Univ", mincriterion=0.95, minsplit = 30, minbucket = 30)) 
+  fit.rf <-cforest_gen( fit.rf.formula, data = data1, weight_variable=c(0,weight_variable), mtry = round(ntree/3,0), ntree = ntree, control = ctree_control(teststat="quad", testtype="Univ", mincriterion=0.95, minsplit = 30, minbucket = 30)) 
        
   ##computing the SNP interaction metric for each forest run using the getInteractionMatrix function.
-  Importance_Score[[match(seed,Seeds)]] <-getInteractionMatrix(fit.rf, setdiff(colnames(data1), "PHENOTYPE"))
+  Importance_Score[[match(seed,Seeds)]] <-getInteractionMatrix(fit.rf)
 }
 
 NiterChild=10
@@ -630,3 +632,109 @@ plotSNPAgingInteraction(data_epistasis, unlist(interaction))
 
 ```
 
+# 3. MEIF Implementation
+In this section we will show how to combine mixed effects modelling with cforest in MEIF (model shown below).
+
+$$y_i= \sum{a_i X_{ij}} + b_iZ_i+f(S_{i1},S_{i2},\cdots, S_{iN}) + \epsilon_i$$
+                                                                                  where $b_i\sim N_q(0,D),\epsilon_i\sim N_{n_i}(0,R_i),
+                                                                                            i=1,\cdots,n,j=1,\cdots,K.$
+                                                                                          
+
+
+See the Methods and Materials of the article for more details on the different component of the above model. We have already shown how to run the cforest (represented by $f$ in the above function) and extract interactions from cforest in the above two sections. Here we show how can we implement the mixed effects conditional inference forest (MEIF), that is particularly useful when we have additional covariates except genotype data in the model like population structure or hidden covariates that might have an impact on the phenotype. For the DGRP dataset, there exist some bacterial infections called Wolbachia infections that might have an effect on the phenotype. Additionally, there are chromosomal inversions that are a ubiquitous feature of genetic variation. While inversions have been shown previously to be under selection, or contain genetic variation under selection, the specific phenotypic consequences of inversions leading to their maintenance remain unclear. We take into account the inversions that have quantifiable effect on the phenotype. 
+
+Hence, for the DGRP simulated data, apart from capturing the effect of the genotype on the phenotype and detecting the genetic interactions, we would also like to capture the effect of wolbachia and the above mentioned inversions. We have shown below how the different component can be coded in the MEIF function. Note that function $f$ (or the cforest operation) is parallelized in MEIF for faster implementation.
+
+[//]: # "Loading the weights"
+```{r meif, echo=TRUE, warning=FALSE, message=FALSE} 
+
+#Reading the MEIF function
+source( file.path( SCRIPT_DIR, "MEIF.R"))
+train <- data3
+# For our dataset the last 18 columns contains the variable that should be considered in the mixed model (outside the random forest)
+cols_mixed <- c( "strain", colnames(train)[61:77])
+cols_random <- cols_mixed[1]
+cols_fixed <- cols_mixed[-1]
+# They are
+print(cols_fixed)
+# We want to capture the effect due to strain as random effect and the rest (due to the infection status and inversions as fixed effects in the model). 
+train[ cols_mixed] <- lapply( train[ cols_mixed], function(i)factor(i))
+
+cols = setdiff(colnames( train)[ -1], cols_mixed)
+train[ cols] <- lapply( train[ cols], function(i)factor(i,ordered=TRUE))
+gc(verbose=TRUE)
+set.seed( 415)
+
+#######################Defining the variables for calling MEIF###########################################
+xnam = train[,setdiff( colnames(train), c("PHENOTYPE",cols_mixed))]
+print(dim(xnam))
+#redifining the strains as cluster.id
+colnames(train)[ colnames(train)=="strain"] = "cluster.id"
+MERF.lDB = train
+colnames(MERF.lDB)[ colnames(MERF.lDB)=="PHENOTYPE"] = "Y"
+Snp_List <- colnames( xnam)[-1]
+
+colnames(MERF.lDB)[colnames(MERF.lDB) %in% Snp_List] <- colnames(xnam)[colnames(xnam) %in% Snp_List] <- sapply(1:length(Snp_List),function(i)paste("SNP",i,sep=""))
+Snp_Map <- cbind( Snp_List, sapply(1:length(Snp_List),function(i)paste("SNP",i,sep="")))
+print(dim(MERF.lDB))
+print(head(Snp_Map))
+ 
+ni = vector()
+train$cluster.id = factor( train$cluster.id, labels = 1:nlevels( train$cluster.id))
+#ni captures the cardinality of each cluster
+ni = table(train$cluster.id)
+
+#Zi is the matrix of random effect covariate
+Zi = lapply( 1:nlevels( train$cluster.id), function(i) as.matrix( rep(1, ni[i])))
+
+#Yi is the vector of responses
+Yi = lapply( 1:nlevels( train$cluster.id), function(i) as.matrix((train[,c("cluster.id","PHENOTYPE")]%>%filter(cluster.id==i))$PHENOTYPE))
+
+#Xi is the matrix of fixed effect covariates. We first model the different Fixed effect covrariates in I and then combined them in X.
+Ii = lapply( levels( train$cluster.id), function(i) do.call("cbind", lapply( cols_fixed,function(j) { ddata = train[,c("cluster.id",cols_fixed)]; diag(nlevels(ddata[ ddata$cluster.id==i, ][[j]]))[ddata[ ddata$cluster.id==i, ][[j]], ]})))
+Xi = lapply( 1:nlevels( train$cluster.id), function(i)  Ii[[i]])
+
+#Parameters of the random forest
+mtry = round( ncol( MERF.lDB)/3,0)
+ntree = 50
+nodesize = 5
+
+#other parameters for MEIF
+sigmasqzero = NULL
+Dzero = NULL
+bizero = NULL
+cizero = NULL
+
+F.niter = 10
+max.niter = 30
+smallest.Jump.allowed = 1e-1
+
+verbose = TRUE
+output <- list()
+set.seed( 100)
+
+#######################Running the MEIF###########################################
+
+system.time(output<-MERF(xnam,
+                        MERF.lDB,
+                         ni,
+                         Zi,
+                         Yi,
+                         Xi,                                                                                                                                  ntree=ntree,
+                         mtry=mtry,
+                         nodesize,
+                         sigmasqzero = NULL,
+                         Dzero = NULL,
+                         bizero = NULL,
+                         cizero = NULL,
+                         weight_variable = c(0, rep(1/length(cols), length(cols))),
+                         F.niter,
+                         max.niter,
+                         smallest.Jump.allowed,
+                         threads=4,
+                         verbose = TRUE))
+
+print(summary(output))
+#The fit.rf comprises the cforest implementation part of the MEIF and the fit.rf object can be used for extracting interactions as shown earlier in the 1st and 2nd section.
+
+```
