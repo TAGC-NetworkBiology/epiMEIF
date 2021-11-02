@@ -176,7 +176,47 @@ Final.Contrast.MaxTest(listCluster,Cluster1, niter)
 * Cluster1- This is the data with the snps from the Interaction List of epiMEIF
 * niter- Number of iteration or number of times snps are randomly drawn for benchmarking.
 
+## MEIF
+### Functions
+#### 1. MEIF
 
+This function implements the mixed effect conditional inference forest introduced in the article. The source R code for this function is adapted from MERF (https://doi.org/10.1080/00949655.2012.741599). We have substituted the random forest with the conditional inference forest component and added additive fixed effects component to the model (along with the existing random effects component in MERF).
+
+#### Usage
+```{r }
+MEIF( xnam, MERF.lDB, ni, Zi, Yi, Xi, ntree, mtry, nodesize, sigmasqzero = NULL, Dzero = NULL, bizero = NULL, cizero = NULL, weight_variable=NULL, F.niter, max.niter, smallest.Jump.allowed, threads=6, verbose = TRUE)
+```
+
+#### Parameters
+* xnam- A charcter vector of p columns, corresponding to the names of the p fixed effect covariates (as they appear in the learning dataset).
+* MERF.lDB- The learning dataset: a dataframe of N rows (i.e. N level-one observations) and (p+2) columns, where the column "cluster.id" corresponds to the variable uniquely identifying the n clusters (or level-two obervations), the column "Y" corresponds to the name of the continuous response variable, and the other p columns correspond to the p fixed effects covariates.	
+* ni- A vector of n columns, where ni[i] corresponds to the size of cluster i, for $i = 1, \cdots, n$ (ATTENTION: should keep the same order as in MERF.lDB).
+* Zi- A list of n matrices Zi[[i]] of dimension (ni[i] X q), where Zi[[i]] corresponds to the q random effects covariates values of the ni[i] observations nested within cluster i, for $i= 1, \cdots, n$. Note that q=1 when there is only a random intercept, i.e. no random effect covariates.
+* Xi- A list of n matrices Zi[[i]] of dimention(ni[[i]] x nx) where Xi[[i]] corresponds to the fixed effects covariates that we donot wish to include in the random forest for cluster i where $i =1, \cdots, n$.
+* Yi- A list of n vectors Yi[i] of ni[i] rows, where Yi[i] corresponds to the response values of the ni[i] observations nested within cluster i, for $i= 1, \cdots, n$.
+* ntree- ntree argument of randomForest function, i.e., number of trees to grow (e.g. 300).
+* mtry- mtry argument of randomForest function, i.e., number of variables randomly sampled as candidates at each split (e.g. 3).
+* nodesize- nodesize argument of randomForest function, i.e., minimum size of terminal nodes (e.g.5).
+* sigmasqzero- Starting value of s2, where the covariance matrix of the errors Ri = s2Ini , for $i = 1, \cdots, n$. 
+* Dzero- Starting value of the covariance matrix of the random effects. 
+* bizero- Starting values of the random effects: a list of n matrices of $q \times 1$ unknown vector of random effects. 
+* cizero- Starting values of the fixed effects( not part of random forest): a list of n matrices of $n\times 1$ unknown vector of fixed effects. 
+* F.niter- The number of iterations forced to avoid early stopping (e.g. 100).
+* max.niter	#Maximum number of iterations, in addition to the F.niter forced iterations (e.g. 300).
+* smallest.Jump.allowed- A given small value (e.g. 1e-4).
+* verbose- Logical variable reporting if R should report extra information on progress?
+* threads-  Number of threads used for parallelization
+
+#### 2. cforestmt
+
+Parellelized version of cforest function.
+
+#### Usage
+```{r }
+cforestmt(formula, data = list(), subset = NULL, weights = NULL,weight_variable=NULL, control = ctree_control(),mtry=mtry, ntree=ntree, xtrafo = NULL, ytrafo = NULL, scores = NULL, threads=6) 
+```
+#### Parameters
+All parameters remain same as cforest except **threads** which captures the number of threads/cores used for parallelization.
 
 # Implementation of the code
 
