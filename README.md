@@ -19,7 +19,7 @@ The dataset (in folder data) contains a similated cross-sectional and a longitud
 
 # Description of the code
 
-The R codes are saved in the folder codes. We have created two primary scripts: Interaction_Score_Age1 (for cross-sectional data), Interaction_Score_Ageing (for longitudinal data). The following section will elaborate on the different functions in Interaction_Score_Age1.
+The R codes are saved in the folder codes. We have created three primary scripts: Interaction_Score_Age1 (for cross-sectional data), Interaction_Score_Ageing (for longitudinal data) and MEIF. The following section will elaborate on the primary functions in each script.
 
 ## Interaction_Score_Age1
 ### Functions
@@ -142,7 +142,7 @@ This function plots the effect of interactions of snps under investigation on th
 
 #### Usage
 ```{r }
-plotSNPInteraction( data_epistasis, snp_list)
+plotSNPAgingInteraction( data_epistasis, snp_list)
 ```
 
 #### Parameters
