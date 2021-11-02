@@ -715,7 +715,7 @@ set.seed( 100)
 
 #######################Running the MEIF###########################################
 
-system.time(output<-MERF(xnam,
+system.time(output<-MEIF(xnam,
                         MERF.lDB,
                          ni,
                          Zi,
