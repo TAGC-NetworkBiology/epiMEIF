@@ -113,7 +113,7 @@ library(partykit)
 cforestmt<-function(formula, data = list(), subset = NULL, weights = NULL,weight_variable=NULL, control = ctree_control(),mtry=mtry, ntree=ntree, xtrafo = NULL, ytrafo = NULL, scores = NULL, threads=6) {
   
   if(ntree<threads) {    # if there are less trees than threads single thread
-    return(cforest_new(formula, data = data, subset=subset,ntree=ntree, mtry=mtry, weights=weights,weight_variable=weight_variable, control=control, xtrafo=xtrafo, ytrafo=ytrafo, scores=scores))
+    return(cforest_gen(formula, data = data, subset=subset,ntree=ntree, mtry=mtry, weights=weights,weight_variable=weight_variable, control=control, xtrafo=xtrafo, ytrafo=ytrafo, scores=scores))
   }
   
   # round off threads
@@ -127,8 +127,8 @@ cforestmt<-function(formula, data = list(), subset = NULL, weights = NULL,weight
   # run forests in parallel
   sfInit(parallel=T, cpus=threads, type="SOCK")
   sfClusterEval(library(partykit))
-  sfExport('formula','data','subset','weights','weight_variable','control','xtrafo','ytrafo','scores', 'mtry', 'ntree', "cforest_new", ".start_subset", "constparties", "ctree_new", ".y2infl")
-  fr<-sfClusterEval(cforest_new(formula, data = data, subset=subset, weights=weights,weight_variable=weight_variable, mtry=mtry,ntree=ntree, control=control,  ytrafo=ytrafo, scores=scores))
+  sfExport('formula','data','subset','weights','weight_variable','control','xtrafo','ytrafo','scores', 'mtry', 'ntree', "cforest_gen", ".start_subset", "constparties", "ctree_new", ".y2infl")
+  fr<-sfClusterEval(cforest_gen(formula, data = data, subset=subset, weights=weights,weight_variable=weight_variable, mtry=mtry,ntree=ntree, control=control,  ytrafo=ytrafo, scores=scores))
   sfStop()
   
   # combine/append forest
@@ -141,7 +141,7 @@ cforestmt<-function(formula, data = list(), subset = NULL, weights = NULL,weight
 }
 
 
-MERF  <- function( xnam,
+MEIF  <- function( xnam,
                    MERF.lDB, 
                    ni,
                    Zi,
@@ -722,7 +722,7 @@ constparties <- function(nodes, data, weights, fitted = NULL, terms = NULL, info
 }
 
 
-cforest_new <- function
+cforest_gen <- function
 (
   formula,
   data,   
