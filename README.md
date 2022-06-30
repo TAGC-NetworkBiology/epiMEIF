@@ -63,7 +63,7 @@ trace = FALSE, weight_variable = NULL,..)
 * **weight_variable = an optional vector of weights for the predictors to be sampled at the root node. In the cforest function of the partykit package there was no option to assign weight to the predictors sampling scheme. Each predictor was equally probable to be sampled at the root node. We added this feature in our adaptation where the user can assigned weights to all the variables based on some pre-decided criteria.**
 
 
-#### 2. getInteractionMatrix
+#### 2.1. getInteractionMatrix
 
 Generates the interaction score matrix from each cforest object.
 
@@ -75,7 +75,19 @@ getInteractionMatrix(output)
 #### Parameters
 * output- a object of class cforest from which the interaction lists need to generated 
 
-#### 3. GenerateInteractionList
+#### 2.2. getInteractionMatrix_RF
+
+Generates the interaction score matrix from each random forest object.
+
+#### Usage
+```{r }
+getInteractionMatrix_RF(output)
+```
+
+#### Parameters
+* output- a object of class random forest from which the interaction lists need to generated 
+
+#### 3.1. GenerateInteractionList
 
 The epiMEIF method proposed to fit 10 cforests or MEIFs and then obtained the interaction sets/lists based on the pooled interaction score matrix from all the forest. This function  summarizes the SNP Interaction Metrix across the 10 forest and generates the pooled interaction list.
 
@@ -88,6 +100,20 @@ GenerateInteractionList(Interaction_List, Importance_Score_list)
 * Interaction_List- This is the compiled list of interaction from each forest.
 * Importance_Score_list- This is the list of interaction from each forest along with their interaction scores.
 
+
+#### 3.2. GenerateInteractions_RF
+
+The above function helps to generate interactions from random forest objects using the similar mechanism as following in GenerateInteractionList.
+
+#### Usage
+```{r }
+GenerateInteractions_RF(Interaction_List_RF, Importance_Score_RF, "SRF")```
+
+#### Parameters
+* Interaction_List_RF- This is the compiled list of interaction from each forest.
+* Importance_Score_RF- This is the list of interaction from each forest along with their interaction scores.
+
+ 
 #### 4. plotSNPInteraction
 
 This function plots the effect of interactions of snps under investigation on the phenotype and also shows the effect of individual snp (in the snp_list) on the phenotype.
@@ -220,4 +246,6 @@ All parameters remain same as cforest except **threads** which captures the numb
 
 # Implementation of the code
 
-An RMD file (epiMEIF_Illustration) is loaded which retrieves data from the folder data and R codes from the folder codes and shows the step by step implementation of the epiMEIF method. In this link [epiMEIF_Illustration](https://rpubs.com/saswatisaha18/epiMEIF) we illustrate how to run the cforest part of the epiMEIF and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network. Finally we show how the MEIF model i.e., mixed modelling combined with cforest can be implemented on a GWAS dataset.
+An RMD file (epiMEIF_Illustration) is loaded which retrieves data from the folder data and R codes from the folder codes and shows the step by step implementation of the epiMEIF method. In this link [epiMEIF_Illustration](https://rpubs.com/saswatisaha18/epiMEIF) we illustrate how to run the cforest part of the epiMEIF and obtain higher order interactions from different types of dataset (cross-sectional dataset/longitudinal). We will also illustrate ways to validate the interactions obtained from MEIF using the additional testing strategies- max-t test and anova test and obtain the final interaction network. We also ran random forest on the same data and extracted interactions from the random forest application similar to cforest. This is done to show that the mechanism to extract interaction is applicable on other forest based algorithm. Finally we show how the MEIF model i.e., mixed modelling combined with cforest can be implemented on a GWAS dataset.
+
+
